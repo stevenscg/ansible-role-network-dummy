@@ -1,7 +1,6 @@
 ---
 galaxy_info:
   author: stevenscg
-  description: Configures Vault
   min_ansible_version: 2.0
   license: MIT
   description: |
