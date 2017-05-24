@@ -1,0 +1,98 @@
+---
+#
+# Ansible tasks for the network-dummy role
+#
+# This is used to create a dummy0 network interface that both consul and dnsmasq
+# can bind to in a scenario where consul runs on a docker host and the containers
+# on that host need access to consul.
+#
+# See:
+#  https://medium.com/zendesk-engineering/making-docker-and-consul-get-along-5fceda1d52b9
+#  https://groups.google.com/forum/#!topic/consul-tool/HgCXRY7C8FY
+#  https://jamielinux.com/docs/libvirt-networking-handbook/appendix/dummy-interface-on-rhel.html
+#  https://www.centos.org/forums/viewtopic.php?t=53233
+#  http://www.unix.com/man-page/centos/5/modprobe.d/
+#
+# Resources:
+# ip a
+# nmcli dev show
+# nmcli con show
+
+- block:
+    - name: Ensure the the dummy kernel module is loaded
+      modprobe:
+        name: dummy
+        state: present
+        params: "numdummies=1"
+
+    - name: Ensure that the dummy kernel module is configured
+      copy:
+        dest: /etc/modules-load.d/dummy.conf
+        mode: 0744
+        content: |
+          install dummy /sbin/modprobe --ignore-install dummy
+
+    # @TODO the modeprobe play above does not seem to do this.
+    - name: Ensure that the dummy kernel module is enabled on boot
+      copy:
+        dest: /etc/modprobe.d/dummy.conf
+        mode: 0744
+        content: |
+          dummy
+
+    - name: Ensure that the dummy device is configured
+      copy:
+        dest: /etc/sysconfig/network-scripts/ifcfg-dummy0
+        mode: "0755"
+        content: |
+          NAME=ethdummy0
+          DEVICE=dummy0
+          MACADDR=00:22:22:ff:ff:ff
+          IPADDR=169.254.1.1
+          NETMASK=255.255.255.0
+          ONBOOT=yes
+          TYPE=Ethernet
+          NM_CONTROLLED=no
+      register: device_configured
+
+    - name: Ensure the dummy interface is started
+      shell: "ifdown dummy0 && ifup dummy0"
+      when: device_configured.changed
+  when: ( network_dummy_use_systemd | default(false) )
+
+- block:
+    - name: Ensure that systemd-networkd is installed
+      yum:
+        pkg: "{{ item }}"
+        state: installed
+      with_items:
+        - systemd-networkd
+      register: s_systemd
+
+    - name: Create the systemd/network path
+      file:
+        state: directory
+        path: /etc/systemd/network
+
+    - name: Ensure that dummy0.netdev is installed
+      copy:
+        src:  systemd.netdev
+        dest: /etc/systemd/network/dummy0.netdev
+        mode: 0755
+      register: f_netdev
+
+    - name: Ensure that dummy0.network is installed
+      copy:
+        src:  systemd.network
+        dest: /etc/systemd/network/dummy0.network
+        mode: 0755
+      register: f_network
+
+    - name: Ensure that systemd-networkd is enabled on boot
+      systemd:
+        state: restarted
+        daemon_reload: yes
+        name: systemd-networkd
+      when:
+        ( f_netdev|changed or f_network|changed or s_systemd|changed )
+  when: ( network_dummy_use_systemd | default(true) )

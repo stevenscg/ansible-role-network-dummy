@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  author: stevenscg
+  description: Configures Vault
+  min_ansible_version: 2.0
+  license: MIT
+  description: |
+    Install a dummy0 network interface on a well-known address.
+    This is used to create a dummy0 network interface that both
+    consul and dnsmasq can bind to in a scenario where consul
+    runs on a docker host and the containers on that host need
+    access to consul.
+  min_ansible_version: 2.0
+  platforms:
+    - name: EL
+      versions:
+      - 7
+  categories:
+    - networking
+    - system
+  dependencies: []
